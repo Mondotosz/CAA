@@ -171,4 +171,102 @@
 
 = Creating Groups
 
+#question(title: [
+  What is key rotation and what is it used for?
+], [
+  A key rotation consists of changing the key used for encryption. Once rotated,
+  the old key isn't used to encrypt anymore but it can still be used to decrypt
+  ciphertexts that were encrypted with it.
 
+  The rotation is helpful against cryptanalysis as well as potential breaches.
+  The likelihood of cryptanalysis to work scales with the number of known
+  ciphertexts. By rotating the key we limit the number of ciphertexts which in
+  turn reduces the probability of cryptanalysis to work.
+
+  If the key is compromised, at least the affected data is limited to the period
+  between key rotations and not the whole database.
+])
+
+#question(title: [
+  How does Vault make sure one can decrypt an old message when keys are rotated?
+], [
+  The key is kept. Each ciphertext has metadata attached to it which contains
+  all the informations necessary to determine which version (rotation) of the
+  key should be used when deciphering
+])
+
+#question(title: [
+  What do you think of having a key rotation every 1h?
+], [
+  This seems aggressive. The documentation mentions the NIST rotation guidance
+  which tells us that the rotation should happen before a number of encryptions
+  have been made with a key. This number of encryptions depends on the algorithm
+  of the key but in their example a rotation every 3 month with 40M operations
+  per day is sufficient.
+
+  Our application won't come anywhere close to that so having 1h rotation is
+  only good to prove that the rotation works but for a production application it
+  will just generate a lot of keys which could potentially reduce performances.
+])
+
+```hcl
+# Financial.hcl
+# Allow encryption using the Financial key
+path "transit/encrypt/Financial" {
+  capabilities = ["update"]
+}
+
+# Allow decryption using the Financial key
+path "transit/decrypt/Financial" {
+  capabilities = ["update"]
+}
+
+# Allow read and write access to the Financial store
+path "kv-v2/data/ciphertexts/Financial/*" {
+  capabilities = ["read", "create"]
+}
+```
+
+```hcl
+# IT.hcl
+# Allow encryption using the IT key
+path "transit/encrypt/IT" {
+  capabilities = ["update"]
+}
+
+# Allow decryption using the IT key
+path "transit/decrypt/IT" {
+  capabilities = ["update"]
+}
+
+# Allow read and write access to the IT store
+path "kv-v2/data/ciphertexts/IT/*" {
+  capabilities = ["read", "create"]
+}
+```
+
+#question(title: [
+  What capabilities did you give for the transit service and why? Provide the
+  policy file in your report
+], [
+  `update`. The policies documentation states `POST` and `PUT`
+  methods are used for `create` and `update` as well as the fact that most of
+  the project doesn't distinguish between the two and require both.
+
+  When looking at the transit API for encrypt, it's one of the functionalities
+  which distinguish between the two. With `update` only, the encryption will
+  fail if the key wasn't created. On the other hand, with `create`, the key will
+  be generated with default values (for parameters.) Since we want specific
+  types for the keys, it's better to only use `update`.
+])
+
+#question(title: [
+  What capabilities did you give for the kv service and why? Provide the policy
+  file in your report.
+], [
+  `create`, `read` and `list`. The instructions stated that users should be able
+  to read and write to the kv (under their respective groups.) Whether they
+  should be allowed to `update` or `delete` is ambiguous and will be restricted
+  until clarification. The `list` capability is added since the kv will be used
+  as the database and the application won't know the keys otherwise.
+])
