@@ -159,3 +159,12 @@
   encryption which increases processing time without any meaningful security
   gains.
 ])
+
+#info(title: "Quick setup", [
+  I created a `fish` script to quickly setup the dev server with the kv and
+  transit engines
+
+  ```fish
+  ./setup.fish
+  ```
+])
