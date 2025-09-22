@@ -1,0 +1,5 @@
+services:
+  vault:
+    image: ghcr.io/openbao/openbao:2
+    ports:
+      - 8200:8200
