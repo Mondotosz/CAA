@@ -18,7 +18,7 @@ def check_new_messages(client: Client, last_check: datetime):
             for key in metadatas.keys():
                 updated_at = parser.isoparse(metadatas[key]["updated_time"])
                 sender = pydash.get(
-                    metadatas, "custom_metadata.sender", default="unknown"
+                    metadatas[key], "custom_metadata.sender", default="unknown"
                 )
                 if updated_at > last_check:
                     print(f"group={group}, title={key}, sender={sender}")

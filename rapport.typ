@@ -289,3 +289,19 @@ Show in your report that your app is working properly.
 ])
 
 = Watcher App
+
+#question(title: [
+Show in your report that your app token cannot encrypt or decrypt data.
+], [
+  #figure(image("assets/watcher_transit_perms.png"))
+])
+
+#question(title: [
+Show in your report that your app is working properly
+], [
+  #figure(image("assets/watcher_proof.png"))
+
+  - Top left corner: The main app connected as ceo
+  - Bottom left: The watcher started just before the main app
+  - Right: All the existing messages (keys only)
+])
