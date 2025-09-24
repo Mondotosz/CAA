@@ -55,7 +55,7 @@ def send(client: Client, group: str):
         return
 
     content: str | None = questionary.text(
-        "Content", validate=validate_str_min_len(0)
+        "Content", validate=validate_str_min_len(0), multiline=True
     ).ask()
     if not content:
         return
