@@ -10,7 +10,11 @@ path "transit/decrypt/Financial" {
 
 # Allow read and write access to the Financial store
 path "kv-v2/data/ciphertexts/Financial/*" {
-  capabilities = ["create", "read"]
+  capabilities = ["create", "update", "read"]
+}
+
+path "kv-v2/metadata/ciphertexts/Financial/*" {
+  capabilities = ["create", "update"]
 }
 
 path "kv-v2/metadata/ciphertexts/Financial/*" {

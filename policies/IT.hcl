@@ -10,7 +10,11 @@ path "transit/decrypt/IT" {
 
 # Allow read and write access to the IT store
 path "kv-v2/data/ciphertexts/IT/*" {
-  capabilities = ["create", "read"]
+  capabilities = ["create", "update", "read"]
+}
+
+path "kv-v2/metadata/ciphertexts/IT/*" {
+  capabilities = ["create", "update"]
 }
 
 path "kv-v2/metadata/ciphertexts/IT/*" {

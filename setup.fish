@@ -8,7 +8,7 @@ set -x PADDING "0 1"
 set -x BORDER rounded
 set -x BOLD true
 
-set -x tasks auth engines groups policies users
+set -x tasks auth engines groups policies users watcher
 
 set -x selected (gum choose --no-limit --header "Action" $tasks)
 
@@ -47,6 +47,12 @@ if contains users in $selected
     bao write auth/userpass/users/ceo password=ceo1 policies="it,financial"
     bao write auth/userpass/users/bob password=bob1 policies="it"
     bao write auth/userpass/users/secretary password=secretary1 policies="financial"
+end
+
+if contains watcher in $selected
+    gum style Users
+    bao policy write watcher $root_path/policies/Watcher.hcl
+    bao token create -policy watcher -orphan
 end
 
 # Post setup
