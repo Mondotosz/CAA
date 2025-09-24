@@ -11,14 +11,14 @@ def validate_str_min_len(n: int) -> Callable[[str], bool]:
 
 def login() -> Client | None:
     username: str | None = questionary.text(
-        "Username", validate=validate_str_min_len(0), default="ceo"
+        "Username", validate=validate_str_min_len(0)
     ).ask()
 
     if not username:
         return
 
     password: str | None = questionary.password(
-        "Password", validate=validate_str_min_len(0), default="ceo1"
+        "Password", validate=validate_str_min_len(0)
     ).ask()
 
     if not password:
@@ -47,13 +47,15 @@ def login() -> Client | None:
 
 def send(client: Client, group: str):
     title: str | None = questionary.text(
-        "Title", validate=validate_str_min_len(0), default="test"
+        "Title",
+        validate=validate_str_min_len(0),
+        instruction="(The title is stored as plaintext and acts as an id)",
     ).ask()
     if not title:
         return
 
     content: str | None = questionary.text(
-        "Content", validate=validate_str_min_len(0), default="test message"
+        "Content", validate=validate_str_min_len(0)
     ).ask()
     if not content:
         return
@@ -72,8 +74,14 @@ def send(client: Client, group: str):
 
 
 def receive(client: Client, group: str):
-    title: str | None = questionary.text(
-        "Title", validate=validate_str_min_len(0)
+    response = client.secrets.kv.v2.list_secrets(
+        path=f"ciphertexts/{group}", mount_point="kv-v2"
+    )
+
+    titles: list[str] = response["data"]["keys"]
+
+    title: str | None = questionary.autocomplete(
+        "Title", validate=validate_str_min_len(0), choices=titles
     ).ask()
     if not title:
         return
@@ -88,7 +96,7 @@ def receive(client: Client, group: str):
 
     response = client.secrets.transit.decrypt_data(name=group, ciphertext=ciphertext)
 
-    plaintext = b64decode(response["data"]["plaintext"].encode())
+    plaintext = b64decode(response["data"]["plaintext"].encode()).decode()
     print(plaintext)
 
 
@@ -98,24 +106,30 @@ def main():
     if not client:
         return
 
-    group: str | None = questionary.text(
-        "Group name", validate=validate_str_min_len(0), default="IT"
+    group: str | None = questionary.autocomplete(
+        "Group name",
+        validate=validate_str_min_len(0),
+        choices=["IT", "Financial"],
     ).ask()
 
     if not group:
         return
 
-    choice: Literal["send a message", "receive a message"] | None = questionary.select(
-        "What do you want to do?",
-        choices=["send a message", "receive a message"],
-        default="send a message",
-    ).ask()
+    while True:
+        choice: Literal["send a message", "receive a message", "quit"] | None = (
+            questionary.select(
+                "What do you want to do?",
+                choices=["send a message", "receive a message", "quit"],
+            ).ask()
+        )
 
-    match choice:
-        case "send a message":
-            send(client, group)
-        case "receive a message":
-            receive(client, group)
+        match choice:
+            case "send a message":
+                send(client, group)
+            case "receive a message":
+                receive(client, group)
+            case _:
+                return
 
 
 if __name__ == "__main__":
