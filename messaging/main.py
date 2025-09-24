@@ -86,11 +86,15 @@ def receive(client: Client, group: str):
     if not title:
         return
 
-    response = client.secrets.kv.v2.read_secret_version(
-        path=f"ciphertexts/{group}/{title}",
-        mount_point="kv-v2",
-        raise_on_deleted_version=False,
-    )
+    try:
+        response = client.secrets.kv.v2.read_secret_version(
+            path=f"ciphertexts/{group}/{title}",
+            mount_point="kv-v2",
+            raise_on_deleted_version=False,
+        )
+    except exceptions.InvalidPath:
+        print("Error: message not found")
+        return
 
     ciphertext = response["data"]["data"]["value"]
 
@@ -100,36 +104,48 @@ def receive(client: Client, group: str):
     print(plaintext)
 
 
+def choose_group() -> str:
+    group: str | None = questionary.autocomplete(
+        "Group name",
+        validate=validate_str_min_len(0),
+        choices=["IT", "Financial"],
+    ).ask()
+    if not group:
+        sys.exit()
+
+    return group
+
+
 def main():
     client = login()
 
     if not client:
         return
 
-    group: str | None = questionary.autocomplete(
-        "Group name",
-        validate=validate_str_min_len(0),
-        choices=["IT", "Financial"],
-    ).ask()
-
-    if not group:
-        return
+    group = choose_group()
 
     while True:
-        choice: Literal["send a message", "receive a message", "quit"] | None = (
-            questionary.select(
-                "What do you want to do?",
-                choices=["send a message", "receive a message", "quit"],
-            ).ask()
-        )
+        choice: (
+            Literal["send a message", "receive a message", "change group", "quit"]
+            | None
+        ) = questionary.select(
+            "What do you want to do?",
+            choices=["send a message", "receive a message", "change group", "quit"],
+        ).ask()
 
-        match choice:
-            case "send a message":
-                send(client, group)
-            case "receive a message":
-                receive(client, group)
-            case _:
-                return
+        try:
+            match choice:
+                case "send a message":
+                    send(client, group)
+                case "receive a message":
+                    receive(client, group)
+                case "change group":
+                    group = choose_group()
+                case _:
+                    return
+        except exceptions.Forbidden as err:
+            for e in err.errors if err.errors else ["unknown error"]:
+                print(f"Error: {e}")
 
 
 if __name__ == "__main__":
