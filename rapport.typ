@@ -273,4 +273,19 @@ path "kv-v2/data/ciphertexts/IT/*" {
 
 = Main App Development
 
+#question(title: [
+Show in your report that bob cannot send or receive data from the finance group.
+], [
+  #figure(image("assets/poc_1.png"))
+  #figure(image("assets/bob_financial.png"))
+])
 
+#question(title: [
+Show in your report that your app is working properly.
+], [
+  #figure(image("assets/poc_2.png"))
+  #figure(image("assets/bob_it.png"))
+  #figure(image("assets/kv_proof.png"))
+])
+
+= Watcher App
