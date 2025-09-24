@@ -1,6 +1,7 @@
 from typing import Callable, Literal
 import questionary
 from hvac import exceptions, Client
+from base64 import b64encode, b64decode
 import sys
 
 
@@ -10,14 +11,14 @@ def validate_str_min_len(n: int) -> Callable[[str], bool]:
 
 def login() -> Client | None:
     username: str | None = questionary.text(
-        "Username", validate=validate_str_min_len(0)
+        "Username", validate=validate_str_min_len(0), default="ceo"
     ).ask()
 
     if not username:
         return
 
     password: str | None = questionary.password(
-        "Password", validate=validate_str_min_len(0)
+        "Password", validate=validate_str_min_len(0), default="ceo1"
     ).ask()
 
     if not password:
@@ -46,18 +47,28 @@ def login() -> Client | None:
 
 def send(client: Client, group: str):
     title: str | None = questionary.text(
-        "Title", validate=validate_str_min_len(0)
+        "Title", validate=validate_str_min_len(0), default="test"
     ).ask()
     if not title:
         return
 
     content: str | None = questionary.text(
-        "Title", validate=validate_str_min_len(0)
+        "Content", validate=validate_str_min_len(0), default="test message"
     ).ask()
     if not content:
         return
 
-    ciphertext = client.secrets.transit
+    response = client.secrets.transit.encrypt_data(
+        name=group, plaintext=b64encode(content.encode()).decode("ascii")
+    )
+
+    ciphertext: str = response["data"]["ciphertext"]
+
+    client.secrets.kv.v2.create_or_update_secret(
+        path=f"ciphertexts/{group}/{title}",
+        secret=dict(value=ciphertext),
+        mount_point="kv-v2",
+    )
 
 
 def receive(client: Client, group: str):
@@ -67,6 +78,19 @@ def receive(client: Client, group: str):
     if not title:
         return
 
+    response = client.secrets.kv.v2.read_secret_version(
+        path=f"ciphertexts/{group}/{title}",
+        mount_point="kv-v2",
+        raise_on_deleted_version=False,
+    )
+
+    ciphertext = response["data"]["data"]["value"]
+
+    response = client.secrets.transit.decrypt_data(name=group, ciphertext=ciphertext)
+
+    plaintext = b64decode(response["data"]["plaintext"].encode())
+    print(plaintext)
+
 
 def main():
     client = login()
@@ -75,14 +99,16 @@ def main():
         return
 
     group: str | None = questionary.text(
-        "Group name", validate=validate_str_min_len(0)
+        "Group name", validate=validate_str_min_len(0), default="IT"
     ).ask()
 
     if not group:
         return
 
     choice: Literal["send a message", "receive a message"] | None = questionary.select(
-        "What do you want to do?", choices=["send a message", "receive a message"]
+        "What do you want to do?",
+        choices=["send a message", "receive a message"],
+        default="send a message",
     ).ask()
 
     match choice:
