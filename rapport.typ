@@ -35,6 +35,21 @@
   $#x$
 )
 
+= Submission
+
+The setup script is written in fish.
+
+To run, simply call `fish setup.fish`. Multiple tools are required for the script
+to run properly.
+
+- #link("https://fishshell.com/", "fish") to execute the script
+- grep or #link("https://github.com/BurntSushi/ripgrep", "ripgrep")
+  to extract the root token
+- #link("https://github.com/charmbracelet/gum", "gum") for user input
+- #link("https://www.docker.com/", "docker") to start the development
+  server
+- #link("https://openbao.org/docs/install/", "openbao") since its cli
+  is used to interact with the server
 
 = Installation and Launch
 
@@ -209,42 +224,6 @@
   will just generate a lot of keys which could potentially reduce performances.
 ])
 
-```hcl
-# Financial.hcl
-# Allow encryption using the Financial key
-path "transit/encrypt/Financial" {
-  capabilities = ["update"]
-}
-
-# Allow decryption using the Financial key
-path "transit/decrypt/Financial" {
-  capabilities = ["update"]
-}
-
-# Allow read and write access to the Financial store
-path "kv-v2/data/ciphertexts/Financial/*" {
-  capabilities = ["read", "create"]
-}
-```
-
-```hcl
-# IT.hcl
-# Allow encryption using the IT key
-path "transit/encrypt/IT" {
-  capabilities = ["update"]
-}
-
-# Allow decryption using the IT key
-path "transit/decrypt/IT" {
-  capabilities = ["update"]
-}
-
-# Allow read and write access to the IT store
-path "kv-v2/data/ciphertexts/IT/*" {
-  capabilities = ["read", "create"]
-}
-```
-
 #question(title: [
   What capabilities did you give for the transit service and why? Provide the
   policy file in your report
@@ -264,12 +243,104 @@ path "kv-v2/data/ciphertexts/IT/*" {
   What capabilities did you give for the kv service and why? Provide the policy
   file in your report.
 ], [
-  `create`, `read` and `list`. The instructions stated that users should be able
-  to read and write to the kv (under their respective groups.) Whether they
-  should be allowed to `update` or `delete` is ambiguous and will be restricted
-  until clarification. The `list` capability is added since the kv will be used
-  as the database and the application won't know the keys otherwise.
+  `create`, `update`, `read` and `list`. The instructions stated that users
+  should be able to read and write to the kv (under their respective groups.)
+
+  Whether they should be allowed to `update` or `delete` is ambiguous. Since
+  it was asked that the watcher should be able to know the sender of a message,
+  I had to give the right to `update` secrets as well as `create` and `update`
+  their metadata.
+
+  This was done because the kv service doesn't provide any way to know which
+  user created a secret and storing the sender inside the secret require more
+  requests and permissions for the watcher.
+
+  Furthermore, I couldn't find any API that would let me create a secret and
+  specify custom metadatas at once. The solution was to either `create` the
+  secret and `update` the metadata or `create` the metadata and `update` the
+  secret after. I chose the latter and kept the `update` permission on metadata
+  since removing it wouldn't provide more security and the implementation in the
+  main application already used methods that handled creation and update the
+  same way. (The authenticity is already problematic since the client chooses
+  the value for the sender metadata)
+
+  The `list` permission was added to make it easier for users to find messages
+  in their groups. (Though, `scan` might have been better since users are
+  allowed to nest their messages)
 ])
+
+```hcl
+# Financial.hcl
+# Allow encryption using the Financial key
+path "transit/encrypt/Financial" {
+  capabilities = ["update"]
+}
+
+# Allow decryption using the Financial key
+path "transit/decrypt/Financial" {
+  capabilities = ["update"]
+}
+
+# Allow read and write access to the Financial store
+path "kv-v2/data/ciphertexts/Financial/*" {
+  capabilities = ["create", "update", "read"]
+}
+
+path "kv-v2/metadata/ciphertexts/Financial/*" {
+  capabilities = ["create", "update"]
+}
+
+path "kv-v2/metadata/ciphertexts/Financial/*" {
+  capabilities = ["list"]
+}
+```
+
+```hcl
+# IT.hcl
+# Allow encryption using the IT key
+path "transit/encrypt/IT" {
+  capabilities = ["update"]
+}
+
+# Allow decryption using the IT key
+path "transit/decrypt/IT" {
+  capabilities = ["update"]
+}
+
+# Allow read and write access to the IT store
+path "kv-v2/data/ciphertexts/IT/*" {
+  capabilities = ["create", "update", "read"]
+}
+
+path "kv-v2/metadata/ciphertexts/IT/*" {
+  capabilities = ["create", "update"]
+}
+
+path "kv-v2/metadata/ciphertexts/IT/*" {
+  capabilities = ["list"]
+}
+```
+
+```hcl
+# Watcher.hcl
+# Allows listing of all the keys for Financial and IT
+path "kv-v2/metadata/ciphertexts/Financial/*" {
+  capabilities = ["list"]
+}
+
+path "kv-v2/metadata/ciphertexts/IT/*" {
+  capabilities = ["list"]
+}
+
+# Allow access to the keys and metadata all at once
+path "kv-v2/detailed-metadata/ciphertexts/Financial/*" {
+  capabilities = ["list"]
+}
+
+path "kv-v2/detailed-metadata/ciphertexts/IT/*" {
+  capabilities = ["list"]
+}
+```
 
 = Main App Development
 

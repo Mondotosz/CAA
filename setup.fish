@@ -1,6 +1,4 @@
 #!/usr/bin/env fish
-# NOTE: This requires gum to be installed
-
 # Check requirements
 set missing_requirement false
 
@@ -10,21 +8,25 @@ else if type -q grep
     set grep grep
 else
     echo "grep or ripgrep are required"
+    echo "https://github.com/BurntSushi/ripgrep"
     set missing_requirement true
 end
 
 if not type -q gum
     echo "gum is required"
+    echo "https://github.com/charmbracelet/gum"
     set missing_requirement true
 end
 
 if not type -q docker
     echo "docker is required"
+    echo "https://www.docker.com/"
     set missing_requirement true
 end
 
 if not type -q bao
     echo "bao is required"
+    echo "https://openbao.org/docs/install/"
     set missing_requirement true
 end
 
@@ -41,7 +43,7 @@ set -x BOLD true
 
 set -x tasks docker auth engines groups policies users watcher
 
-set -x selected (gum choose --no-limit --header "Action" $tasks)
+set -x selected (gum choose --no-limit --header "Actions (choose what to apply)" $tasks --selected "*")
 
 if contains docker in $selected
     gum style Docker
