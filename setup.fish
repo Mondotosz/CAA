@@ -1,6 +1,37 @@
 #!/usr/bin/env fish
 # NOTE: This requires gum to be installed
 
+# Check requirements
+set missing_requirement false
+
+if type -q rgg
+    set grep rg
+else if type -q grep
+    set grep grep
+else
+    echo "grep or ripgrep are required"
+    set missing_requirement true
+end
+
+if not type -q gum
+    echo "gum is required"
+    set missing_requirement true
+end
+
+if not type -q docker
+    echo "docker is required"
+    set missing_requirement true
+end
+
+if not type -q bao
+    echo "bao is required"
+    set missing_requirement true
+end
+
+if test $missing_requirement = true
+    return 1
+end
+
 set -l root_path (dirname (status --current-filename))
 
 # Styles
@@ -8,14 +39,26 @@ set -x PADDING "0 1"
 set -x BORDER rounded
 set -x BOLD true
 
-set -x tasks auth engines groups policies users watcher
+set -x tasks docker auth engines groups policies users watcher
 
 set -x selected (gum choose --no-limit --header "Action" $tasks)
+
+if contains docker in $selected
+    gum style Docker
+    docker compose --project-directory $root_path up -d --wait
+    set root_token (docker compose --project-directory $root_path logs \
+        | $grep -o "Root Token: s\.\S+" \
+        | tail -n 1 \
+        | string replace "Root Token: " "")
+    echo "Root Token: $root_token"
+end
 
 if contains auth in $selected
     gum style Auth
     # Prompt the user for the root token.
-    set -l root_token (gum input --password --prompt="root token: " --placeholder "s.xxxxxxxxxxxxxxxxxxxxxxxx")
+    if not set -q root_token
+        set root_token (gum input --password --prompt="root token: " --placeholder "s.xxxxxxxxxxxxxxxxxxxxxxxx")
+    end
     set -x BAO_ADDR http://localhost:8200
 
     # Authenticate with the cli

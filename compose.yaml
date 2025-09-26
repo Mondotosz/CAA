@@ -3,3 +3,11 @@ services:
     image: ghcr.io/openbao/openbao:2
     ports:
       - 8200:8200
+    environment:
+      BAO_ADDR: "http://localhost:8200"
+    healthcheck:
+      test: ["CMD", "bao", "read", "sys/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 12
+      start_period: 5s
