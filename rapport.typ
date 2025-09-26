@@ -344,6 +344,21 @@ path "kv-v2/detailed-metadata/ciphertexts/IT/*" {
 
 = Main App Development
 
+#info(title: [Note], [
+  Both apps are written in python and use #link("https://docs.astral.sh/uv/"
+  , "uv") to manage dependencies and the virtual environment.
+
+  ```fish
+  # Download the dependencies
+  uv sync
+  # Run the main app
+  uv run main.py
+  # Run the watcher
+  APP_TOKEN="your token" uv run watcher.py
+  ```
+])
+
+
 #question(title: [
 Show in your report that bob cannot send or receive data from the finance group.
 ], [
