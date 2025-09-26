@@ -95,7 +95,7 @@ if contains users in $selected
 end
 
 if contains watcher in $selected
-    gum style Users
+    gum style Watcher
     bao policy write watcher $root_path/policies/Watcher.hcl
     bao token create -policy watcher -orphan
 end

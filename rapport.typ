@@ -361,6 +361,13 @@ Show in your report that your app is working properly.
 
 = Watcher App
 
+#info(title: [Note], [
+  To use the watcher, you need an `APP_TOKEN` which is generated during the
+  `Watcher` step in `setup.fish`.
+
+  Running this step again doesn't break anything
+])
+
 #question(title: [
 Show in your report that your app token cannot encrypt or decrypt data.
 ], [
