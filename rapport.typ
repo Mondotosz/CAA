@@ -286,7 +286,7 @@ The problem here is that there is a chance of raising an exception and the
 implications vary depending on how exceptions are handled by the caller as well
 as which code paths lead to this function being executed.
 
-The caller shouldn't except `sign_message` to fail when given valid parameters.
+The caller shouldn't expect `sign_message` to fail when given valid parameters.
 Depending on how they handle exceptions, the program could end up revealing
 informations which could be exploited or end up in an unrecoverable state.
 
@@ -348,7 +348,121 @@ def generate_keypair() -> tuple[int, Point]:
 
 
 #task[
-  explain the implications of using random.randrange and what an attacker could
-  do
+  snippet
 ]
 
+#task[
+  implications
+]
+
+#task[
+  attacker
+]
+
+#task[
+  what could go wrong
+]
+
+#task[
+  simple terms why fix
+]
+
+#task[
+  fix
+]
+
+== `load_or_generate_keys`
+
+=== Blind loading
+
+```py
+if os.path.exists(priv_file) and os.path.exists(pub_file):
+    # If both files exist, proceed to extract the private and public keys.
+    with open(priv_file, "r") as f:
+        # The private key is converted from a base16 string to an int.
+        # NOTE: The fact that we strip what we read shouldn't matter unless
+        # the key isn't stored properly
+        priv = int(f.read().strip(), 16)
+    with open(pub_file, "r") as f:
+        # The public key is read as a JSON object with the keys x and y
+        # containing integers in base64
+        pub_data = json.load(f)
+        pub = (int(pub_data["x"], 16), int(pub_data["y"], 16))
+    print("Loaded existing keypair from disk.")
+    # WARN: if both files exist, their value is taken as ground truth. There
+    #   is no verification that the private key is in [1;N[ and that the
+    #   public key is the result of priv * G
+```
+
+When loading the pair of keys from disk, there are no checks made to validate
+it. The problem is that to be able to properly sign and verify the signature of
+a message you need the private key $a$ to respect $1 <= a < N$ and the public
+key $A$ should be $A = a G$.
+
+#task[
+  implications
+]
+
+#task[
+  attacker
+]
+
+#task[
+  what could go wrong
+]
+
+#task[
+  simple terms why fix
+]
+
+#task[
+  fix
+]
+
+=== Insecure storage of private key
+
+```py
+else:
+    print("No keypair found — generating new one...")
+    # If any of the files do not exist we generate a new pair of keys
+    priv, pub = generate_keypair()
+    with open(priv_file, "w") as f:
+        # The private key is simply written properly in hex format
+        f.write(hex(priv))
+    with open(pub_file, "w") as f:
+        # The public key is saved correctly in JSON
+        json.dump({"x": hex(pub[0]), "y": hex(pub[1])}, f)
+    print("New keypair generated and saved.")
+    # WARN: The public and private keys are both simply saved to disk
+    #   without any specifications when it comes to permissions. (on linux,
+    #   resulted in 644 permissions)
+```
+
+When either a public key or private key file is missing, a new pair of keys is
+generated and saved to disk using the built-in open function in `'w'` mode.
+
+There are multiple implications here.
+- Since the `'w'` mode is used, any existing file is overwritten if it already
+  exists. In the case where the private key exists but the public key isn't
+  found, the private previous private key will be lost.
+- The keys will have the default permissions (determined by the OS). On Linux,
+  it often means `0644` which is an issue since we don't want any other user to
+  be able to read the private key.
+
+In the event of an attacker gaining access to the host running the program, they
+can extract the private key without any privilege escalation. This would allow
+them to falsify records. (Breaks authenticity and integrity)
+
+Effectively, this would mean that the attacker could create a fake prescription
+and the pharmacy would treat it as valid. For doctors, this would allow the
+attacker to create fake symptoms for a patient which in turn would result in
+more work for the doctors to check and effectively destroy the efficiency
+brought by the system.
+
+This issue should be fixed because it could cause serious legal troubles since
+it involves medical prescriptions. Furthermore, it also risks the loss of trust
+in the system.
+
+#task[
+  fix
+]

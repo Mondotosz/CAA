@@ -265,6 +265,9 @@ def load_or_generate_keys() -> tuple[PrivKey, PubKey]:
             pub_data = json.load(f)
             pub = (int(pub_data["x"], 16), int(pub_data["y"], 16))
         print("Loaded existing keypair from disk.")
+        # WARN: if both files exist, their value is taken as ground truth. There
+        #   is no verification that the private key is in [1;N[ and that the
+        #   public key is the result of priv * G
     else:
         print("No keypair found — generating new one...")
         # If any of the files do not exist we generate a new pair of keys
@@ -276,6 +279,9 @@ def load_or_generate_keys() -> tuple[PrivKey, PubKey]:
             # The public key is saved correctly in JSON
             json.dump({"x": hex(pub[0]), "y": hex(pub[1])}, f)
         print("New keypair generated and saved.")
+        # WARN: The public and private keys are both simply saved to disk
+        #   without any specifications when it comes to permissions. (on linux,
+        #   resulted in 644 permissions)
     return priv, pub
 
 
@@ -285,6 +291,8 @@ def main():
     )
     # Load or generate keypair. We assume that the public key is safely transfered when needed (ex: for doctors to read the records or for pharamcies to validate prescriptions)
     priv, pub = load_or_generate_keys()
+    print(priv)
+    print(pub)
     print("\n\nWho are you? (this replaces a correct login with credentials)")
     print(
         "1) Doctor"
