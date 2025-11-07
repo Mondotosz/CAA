@@ -291,8 +291,6 @@ def main():
     )
     # Load or generate keypair. We assume that the public key is safely transfered when needed (ex: for doctors to read the records or for pharamcies to validate prescriptions)
     priv, pub = load_or_generate_keys()
-    print(priv)
-    print(pub)
     print("\n\nWho are you? (this replaces a correct login with credentials)")
     print(
         "1) Doctor"
@@ -312,7 +310,6 @@ def main():
         print("Invalid choice")
         return
     signature = sign_message(priv, record)
-    assert verify_signature(pub, record, signature)
     save_record_to_db(record, signature, isPatient)
     print("Record signed by system and saved in DB")
     return
