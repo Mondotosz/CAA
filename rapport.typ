@@ -419,7 +419,44 @@ key $A$ should be $A = a G$.
   fix
 ]
 
-=== Insecure storage of private key
+=== Destructive storage of private key
+
+```py
+else:
+    print("No keypair found — generating new one...")
+    # If any of the files do not exist we generate a new pair of keys
+    priv, pub = generate_keypair()
+    with open(priv_file, "w") as f:
+        # The private key is simply written properly in hex format
+        f.write(hex(priv))
+```
+
+If only private key exists, the function will overwrite it with a new private
+key. This is destructive since we can always compute the public key from the
+private key but we cannot recover the private key once overwritten.
+
+This means that if for some reasons, the public key isn't found we will get a
+new pair of keys. We will need to distribute our new public key to anyone who
+needs to verify our signatures and if we can't our old public key anywhere, the
+validity of past records becomes unverifiable.
+
+#task[
+  attacker
+]
+
+#task[
+  what could go wrong
+]
+
+#task[
+  simple terms why fix
+]
+
+#task[
+  fix
+]
+
+=== Insecure permission management of private key
 
 ```py
 else:
@@ -441,13 +478,9 @@ else:
 When either a public key or private key file is missing, a new pair of keys is
 generated and saved to disk using the built-in open function in `'w'` mode.
 
-There are multiple implications here.
-- Since the `'w'` mode is used, any existing file is overwritten if it already
-  exists. In the case where the private key exists but the public key isn't
-  found, the private previous private key will be lost.
-- The keys will have the default permissions (determined by the OS). On Linux,
-  it often means `0644` which is an issue since we don't want any other user to
-  be able to read the private key.
+The keys will have the default permissions (determined by the OS). On Linux, it
+often means `0644` which is an issue since we don't want any other user to be
+able to read the private key.
 
 In the event of an attacker gaining access to the host running the program, they
 can extract the private key without any privilege escalation. This would allow
