@@ -4,6 +4,7 @@ import json
 # WARN: the secrets module should be used instead
 #   https://docs.python.org/3/library/random.html
 import random
+import secrets
 
 # NOTE: https://docs.python.org/3/library/hashlib.html
 import hashlib
@@ -113,8 +114,7 @@ def sha256(b: Buffer) -> int:
 def generate_keypair() -> tuple[PrivKey, PubKey]:
     """Generate a pair of keys"""
     # Take a random value between 1 and N (N not included)
-    # WARN: not cryptographically secure
-    priv = random.randrange(1, N)
+    priv = secrets.randbelow(N - 1) + 1
     # Multiply the private key with G to get the pulic key
     pub = scalar_mult(priv, (Gx, Gy))
     # WARN: the public key could be None if the first parameter of scalar_mult
@@ -128,9 +128,7 @@ def sign_message(priv: PrivKey, message: Buffer) -> Signature:
     """Signs a message using ECDSA with sha256 as the hash function"""
     z = sha256(message)
     while True:
-        # WARN: not cryptographically secure + 0 included
-        # HACK: k = random.randrange(0, N)
-        k = random.randrange(1, N)
+        k = secrets.randbelow(N - 1) + 1
         # R = (x1, y1) = kG
         R = scalar_mult(k, (Gx, Gy))
         assert R
@@ -156,9 +154,10 @@ def sign_message(priv: PrivKey, message: Buffer) -> Signature:
 
 
 # WARN: not used
-# INFO: valid
 def verify_signature(pub: PubKey, message: Buffer, signature: Signature) -> bool:
     """Check the ECDSA signature"""
+    if pub is None or not is_on_curve(pub):
+        return False
     r, s = signature
     # r and s are expected to be in NN^* and mod n
     if not (1 <= r < N and 1 <= s < N):
@@ -179,6 +178,17 @@ def verify_signature(pub: PubKey, message: Buffer, signature: Signature) -> bool
         return False
     # check if r = x1 mod n
     return (P[0] % N) == r
+
+
+def forge_signature_for_infinity_pub(message: Buffer) -> Point:
+    """Generate a valid signature when public key is None"""
+    z = sha256(message)
+    s = 1
+    s_inv = inv_mod(s, N)
+    u1 = (z * s_inv) % N
+    point = scalar_mult(u1, (Gx, Gy))
+    assert point is not None
+    return (point[0] % N, s)
 
 
 ######END of ECDSA
@@ -556,6 +566,10 @@ def main():
         return
     save_record_to_db(record, priv)
     print("Record signed by system and saved in DB")
+
+    # NOTE: sanity check
+    payload = json.dumps(record.to_dict()).encode("utf-8")
+    assert verify_signature(pub, payload, sign_message(priv, payload))
     return
 
 

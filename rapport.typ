@@ -57,21 +57,13 @@ Gy = 326705100207588169780830851305070431844712733806592432759389043357573374824
 N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 ```
 
-En comparant avec les paramètres que l'on trouve en
-ligne#footnote[https://neuromancer.sk/std/secg/secp256k1] on peut confirmer que
-ces paramètres sont correctes.
-
+When comparing with the parameters found
+online#footnote[https://neuromancer.sk/std/secg/secp256k1], we can see that
+those parameters are correct.
 
 = Errors
 
-#task[
-  For each error:
-  - Show the snippet
-  - Explain what the problem is and the implications. What an attacker can do
-    and what could go wrong.
-  - Explain in simple terms why this should be fixed
-  - Give a fix
-]
+This section covers each errors that were found.
 
 == `random.randrange`
 
@@ -95,7 +87,7 @@ def generate_keypair() -> tuple[int, tuple[int, int]]:
     (line: 4, start: 9),
   ),
 )
-```
+```py
 def sign_message(priv, message):
     z = sha256(message)
     while True:
@@ -196,31 +188,200 @@ def generate_keypair() -> tuple[int, Point]:
     return priv, pub
 ```
 
-=== Usage of `random.randrange`
+=== Usage of `random`
 
+#codly(
+  highlights: (
+    (line: 3, start: 0),
+    (line: 20, start: 13),
+    (line: 10, start: 12),
+  ),
+)
+```py
+# WARN: the secrets module should be used instead
+#   https://docs.python.org/3/library/random.html
+import random
 
-#task[
-  snippet
+# INFO: Dangerous use of random, otherwise ok
+def generate_keypair() -> tuple[PrivKey, PubKey]:
+    """Generate a pair of keys"""
+    # Take a random value between 1 and N (N not included)
+    # WARN: not cryptographically secure
+    priv = random.randrange(1, N)
+    # ...
+
+# INFO: issue with random but otherwise valid ECDSA
+def sign_message(priv: PrivKey, message: Buffer) -> Signature:
+    """Signs a message using ECDSA with sha256 as the hash function"""
+    z = sha256(message)
+    while True:
+        # WARN: not cryptographically secure + 0 included
+        # HACK: k = random.randrange(0, N)
+        k = random.randrange(1, N)
+        # ...
+```
+
+The `random` module clearly warns against its use for security or cryptographic
+purposes. This is a PRNG module and not a CSPRNG. I don't have an exact exploit
+for our scenario but looking online, there are multiple articles going in depth
+on how the `random` module can be
+broken.#footnote[https://bitsdeep.com/projects/python-random-prediction/]
+#footnote[https://stackered.com/blog/python-random-prediction/]
+
+If an attacker find the internal state or the seed of the random number
+generator, they can use it to generate the same private key. If they get the
+private key, it's game over and they can create their own records with valid
+signatures.
+
+We need to fix this to prevent bad actors from having any way of recovering the
+private key.
+
+As stated by the documentation of `random`, the secrets module should be used
+instead.
+
+#codly(
+  highlights: (
+    (line: 1, start: 0),
+    (line: 6, start: 12),
+    (line: 13, start: 13),
+  ),
+)
+```py
+import secrets
+
+def generate_keypair() -> tuple[PrivKey, PubKey]:
+    """Generate a pair of keys"""
+    # Take a random value between 1 and N (N not included)
+    priv = secrets.randbelow(N - 1) + 1
+    # ...
+
+def sign_message(priv: PrivKey, message: Buffer) -> Signature:
+    """Signs a message using ECDSA with sha256 as the hash function"""
+    z = sha256(message)
+    while True:
+        k = secrets.randbelow(N - 1) + 1
+        # ...
+```
+
+== Improper signature verification
+
+#info(title: "Note")[
+  The `verify_signature` function is never called. This probably isn't an issue
+  since this is supposed to be a library and we don't have a function that reads
+  a record from the disk.
 ]
 
-#task[
-  implications
-]
+```py
+def verify_signature(pub: PubKey, message: Buffer, signature: Signature) -> bool:
+    """Check the ECDSA signature"""
+    # WARN: Missing the first step of verification.
+    #   pub should be a valid public key (on the curve and not point at infinity)
+    r, s = signature
+    # r and s are expected to be in NN^* and mod n
+    if not (1 <= r < N and 1 <= s < N):
+        return False
+    # compute z = H(M)
+    z = sha256(message)
+    # s^(-1) mod n
+    s_inv = inv_mod(s, N)
+    # u1 = H(M)/s (mod n)
+    u1 = (z * s_inv) % N
+    # u2 = r/s (mod n)
+    u2 = (r * s_inv) % N
+    P1 = scalar_mult(u1, (Gx, Gy))
+    P2 = scalar_mult(u2, pub)
+    # P = (x1, y1) = u1G + u2A
+    P = point_add(P1, P2)
+    if P is None:
+        return False
+    # check if r = x1 mod n
+    return (P[0] % N) == r
+```
 
-#task[
-  attacker
-]
+The signature verification doesn't comply with what we've seen in
+class#footnote[https://cyberlearn.hes-so.ch/pluginfile.php/4064747/mod_resource/content/0/03_asymmetric.pdf#page=47].
+Specifically, the first step is skipped which is to check that $A != cal(O)$ and
+that $A$ is on the curve
 
-#task[
-  what could go wrong
-]
+This means that if the public key $cal(O)$ is given to check a signature, we
+have the following:
 
-#task[
-  simple terms why fix
-]
+$
+        u_1 & = H(M)/s           & (mod n) \
+        u_2 & = r/s              & (mod n) \
+  (x_1,y_1) & = u_1G + u_2A \
+            & = u_1G + u_2cal(O) \
+            & = u_1G \
+            & = H(M)/s G         & (mod n) \
+          r & eq.quest x_1       & (mod n)
+$
 
-#task[
-  fix
+Since there is no check for $A = cal(O)$, we can simply compute with a chosen
+$s$ and $M$
+
+$
+  (x_1, y_1) & = H(M)/s G
+$
+
+And extract $x_1$ to use as our value for $r$. The following snippet uses
+$s = 1$ which means that we have
+
+$
+  (r,s) & = ((H(M)/1 G)_x, 1)
+$
+
+```py
+def forge_signature_for_infinity_pub(message: Buffer) -> Point:
+    """Generate a valid signature when public key is None"""
+    z = sha256(message)
+    s = 1
+    s_inv = inv_mod(s, N)
+    u1 = (z * s_inv) % N
+    point = scalar_mult(u1, (Gx, Gy))
+    assert point is not None
+    return (point[0] % N, s)
+
+forged = forge_signature_for_infinity_pub(b"test message")
+if verify_signature(None, b"test message", forged):
+    print("forged successfully")
+```
+
+If the value `None` is given as the public key, an attacker can easily forge a
+signature. Thus, this should be fixed to preserve the authenticity.
+
+The fix is simple, just check if `pub` is `None`
+
+```py
+def verify_signature(pub: PubKey, message: Buffer, signature: Signature) -> bool:
+    """Check the ECDSA signature"""
+    if pub is None or not is_on_curve(pub):
+        return False
+    r, s = signature
+    # r and s are expected to be in NN^* and mod n
+    if not (1 <= r < N and 1 <= s < N):
+        return False
+    # compute z = H(M)
+    z = sha256(message)
+    # s^(-1) mod n
+    s_inv = inv_mod(s, N)
+    # u1 = H(M)/s (mod n)
+    u1 = (z * s_inv) % N
+    # u2 = r/s (mod n)
+    u2 = (r * s_inv) % N
+    P1 = scalar_mult(u1, (Gx, Gy))
+    P2 = scalar_mult(u2, pub)
+    # P = (x1, y1) = u1G + u2A
+    P = point_add(P1, P2)
+    if P is None:
+        return False
+    # check if r = x1 mod n
+    return (P[0] % N) == r
+```
+
+#info(title: "Note")[
+  This issue was hinted by Mario, I didn't notice it at first because I knew
+  that `generate_keypair` couldn't give $cal(O)$ as the public key unless the
+  private key is a multiple of $N$ or equal to $0$.
 ]
 
 == `load_or_generate_keys`
@@ -786,12 +947,31 @@ is used correctly.
 We would need classes to ensure that public and private keys are valid on
 instantiation as well as clear exceptions to handle errors.
 
-#info(title: "Note")[
-  The `verify_signature` function is never called. This probably isn't an issue
-  since this is supposed to be a library and we don't have a function that reads
-  a record from the disk.
+
+= AI usage
+
+I used AI while writing the fixes for syntax references, mainly how to use the
+typing module. Here are some of the prompts used.
+
+#quotation(title: "Prompt")[
+  how can I mark a function as deprecated in a way that is picked up by the lsp?
 ]
 
-#task(title: "TODO")[
-  Add mentions on AI usage
+#quotation(title: "Prompt")[
+  what are the standard exceptions in python?
 ]
+
+#quotation(title: "Prompt")[
+  How can I write to a file in python and set its permission before any data is
+  written?
+
+  #info(title: "Note")[
+    When looking online, the solution was always to use `os.chmod` but I didn't
+    like that solution since it only worked if the file already existed.
+  ]
+]
+
+#quotation(title: "Prompt")[
+  How can I properly type a dict?
+]
+
