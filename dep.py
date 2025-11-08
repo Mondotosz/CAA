@@ -8,7 +8,9 @@ import random
 # NOTE: https://docs.python.org/3/library/hashlib.html
 import hashlib
 import os
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Generic, TypeVar, NamedTuple
+from dataclasses import dataclass
 from warnings import deprecated
 
 type Point = tuple[int, int]
@@ -181,8 +183,60 @@ def verify_signature(pub: PubKey, message: Buffer, signature: Signature) -> bool
 
 ######END of ECDSA
 
+T = TypeVar("T")
 
-def build_doctor_record() -> bytes:
+
+@dataclass(frozen=True)
+class Record(Generic[T]):
+    """Class representing a value that should be serializable and deserializable
+    and include a timestamp that match its creation.
+    """
+
+    data: T
+    timestamp: datetime = datetime.now(timezone.utc)
+    pass
+
+    @property
+    def type(self) -> str:
+        return self.data.__class__.__name__
+
+    def to_dict(self) -> dict:
+        return {
+            "type": self.type,
+            "data": self.data,
+            "timestamp": self.timestamp.isoformat(),
+        }
+
+
+class DoctorData(NamedTuple):
+    name: str
+    avs: str
+    drugs: dict[str, str]
+
+
+class PatientData(NamedTuple):
+    name: str
+    avs: str
+    symptoms: dict[str, str]
+
+
+def build_doctor_record() -> Record[DoctorData]:
+    """Build a doctor record"""
+    name = input("Patient name: ").strip()
+    avs = input("Patient AVS number: ").strip()
+    drugs: dict[str, str] = {}
+    print("Enter drugs and dosages. Leave drug name empty to finish.")
+    while True:
+        drug = input("Drug name: ").strip()
+        if not drug:
+            break
+        dosage = input("Dosage (string): ").strip()
+        drugs[drug] = dosage
+    return Record(data=DoctorData(name, avs, drugs))
+
+
+@deprecated("old version kept for comparison")
+def build_doctor_record_old() -> bytes:
     """Build a json array with the following structure
     [
         name,
@@ -203,7 +257,23 @@ def build_doctor_record() -> bytes:
     return json.dumps([name, avs, drugs]).encode("utf-8")
 
 
-def build_patient_record() -> bytes:
+def build_patient_record() -> Record[PatientData]:
+    """Build a patient record"""
+    name = input("Patient name: ").strip()
+    avs = input("Patient AVS number: ").strip()
+    symptoms: dict[str, str] = {}
+    print("Enter symptoms and their temporality. Leave symptom name empty to finish.")
+    while True:
+        sym = input("Symptom: ").strip()
+        if not sym:
+            break
+        temp = input("Temporality (string): ").strip()
+        symptoms[sym] = temp
+    return Record(data=PatientData(name, avs, symptoms))
+
+
+@deprecated("old version kept for comparison")
+def build_patient_record_old() -> bytes:
     """Build a json array with the following structure
     [
         name,
@@ -224,7 +294,30 @@ def build_patient_record() -> bytes:
     return json.dumps([name, avs, symptoms]).encode("utf-8")
 
 
-def save_record_to_db(record: bytes, signature: Signature, isPatient: bool):
+def save_record_to_db(record: Record, priv: PrivKey):
+    """Save a patient record to the database accompanied by its signature"""
+    json_record = json.dumps(record.to_dict())
+    signature = sign_message(priv, json_record.encode("utf-8"))
+    entry = {
+        "record": json_record,
+        "signature": {"r": hex(signature[0]), "s": hex(signature[1])},
+    }
+    filename: str
+    match record.data:
+        case PatientData():
+            filename = "medical_records.txt"
+        case DoctorData():
+            filename = "prescriptions_records.txt"
+        case _:
+            raise ValueError(f"Unexpected record received Record[{record.type}]")
+    # WARN: The entry is appended to the file. This will result in an invalid
+    # json structure which will need to be handled correctly when reading from it
+    with open(filename, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+@deprecated("old version kept for comparison")
+def save_record_to_db_old(record: bytes, signature: Signature, isPatient: bool):
     """Save a patient record to the database accompanied by its signature"""
     # WARN: There is no guarantee that given signature is for the given record
     #   but this shouldn't be an issue when it comes to saving
@@ -453,20 +546,15 @@ def main():
     )  # We suppose that in practice, there is a correct login with credentials
     print("2) Patient")
     choice = input("Choose 1 or 2: ").strip()
-    record = b""
-    isPatient = True
     if choice == "1":
         record = build_doctor_record()
-        isPatient = False
     elif choice == "2":
         record = build_patient_record()
         # NOTE: redundant
-        isPatient = True
     else:
         print("Invalid choice")
         return
-    signature = sign_message(priv, record)
-    save_record_to_db(record, signature, isPatient)
+    save_record_to_db(record, priv)
     print("Record signed by system and saved in DB")
     return
 

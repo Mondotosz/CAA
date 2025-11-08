@@ -37,13 +37,10 @@
 
 = Code analysis
 
-In this section, we'll go over the global constants and each function in the
-order they are called to explain what they do and how/where they are used.
-
-#info(title: "Note", [
-  The explanation is mainly given as comments in the code accompanied with the
-  addition of typing whenever it makes sense
-])
+The code analysis is done in the code in comments. If the code has been
+modified, the original comments can be found in the section addressing the
+issues or in some cases, the function is suffixed with `_old` and decorated with
+`@deprecated`
 
 == Global constants
 
@@ -63,151 +60,6 @@ N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 En comparant avec les paramètres que l'on trouve en
 ligne#footnote[https://neuromancer.sk/std/secg/secp256k1] on peut confirmer que
 ces paramètres sont correctes.
-
-== `main`
-
-This is the entry point of the program.
-
-=== `load_or_generate_keys`
-
-This function is called at the start of `main` with this snippet
-
-```py
-    priv, pub = load_or_generate_keys()
-```
-
-This is the only time this function is called.
-
-```py
-def load_or_generate_keys() -> tuple[int, tuple[int, int]]:
-    """This function loads an existing pair of private/public keys or generates,
-    saves and return a new pair.
-    """
-
-    # Files containing the private and public keys
-    priv_file = "ecdsa_private.key"
-    pub_file = "ecdsa_public.key"
-
-    if os.path.exists(priv_file) and os.path.exists(pub_file):
-        # If both files exist, proceed to extract the private and public keys.
-        with open(priv_file, "r") as f:
-            # The private key is converted from a base16 string to an int.
-            # NOTE: The fact that we strip what we read shouldn't matter unless
-            # the key isn't stored properly
-            priv = int(f.read().strip(), 16)
-        with open(pub_file, "r") as f:
-            # The public key is read as a JSON object with the keys x and y
-            # containing integers in base64
-            pub_data = json.load(f)
-            pub = (int(pub_data["x"], 16), int(pub_data["y"], 16))
-        print("Loaded existing keypair from disk.")
-    else:
-        print("No keypair found — generating new one...")
-        # If any of the files do not exist we generate a new pair of keys
-        priv, pub = generate_keypair()
-        with open(priv_file, "w") as f:
-            # The private key is simply written properly in hex format
-            f.write(hex(priv))
-        with open(pub_file, "w") as f:
-            # The public key is saved correctly in JSON
-            json.dump({"x": hex(pub[0]), "y": hex(pub[1])}, f)
-        print("New keypair generated and saved.")
-    return priv, pub
-```
-
-In this function we call `generate_keypair` to generate a pair of keys.
-
-==== `generate_keypair`
-
-```py
-def generate_keypair() -> tuple[int, tuple[int, int]]:
-    """Generate a pair of keys"""
-    # Take a random value between 1 and N (N not included)
-    priv = random.randrange(1, N)
-    # Multiply the private key with G to get the pulic key
-    pub = scalar_mult(priv, (Gx, Gy))
-    return priv, pub
-```
-
-We take a random number between 1 and N for the private key
-
-$
-  a in {1,...,N-1}
-$
-
-And for the public key, we call `scalar_mult`
-
-===== `scalar_mult`
-
-```py
-def scalar_mult(k: int, point: tuple[int, int] | None):
-    """Multiply a point on the curve by the scalar value k"""
-    # Check that the point is on the curve otherwise the multiplication isn't
-    # possible.
-    assert is_on_curve(point)
-    if k % N == 0 or point is None:
-        # If k is perfectly divisible by N or now point was given, the result is None.
-        # NOTE: If k is perfectly divisible by N, the result will be a None,
-        # this check saves time
-        return None
-    if k < 0:
-        # If k is negative, we simply multiply both inputs by -1 which is
-        # simple to do and allows the next part of the algorithm to work.
-        return scalar_mult(-k, (point[0], (-point[1]) % P))
-    result = None
-    addend = point
-    # To calculate the result, we add point k times, effectively multiplying
-    # the point by k
-    while k:
-        if k & 1:
-            result = point_add(result, addend)
-        addend = point_add(addend, addend)
-        k >>= 1
-    return result
-```
-
-This function should work. As a sanity check we can check with sage that the
-result is as expected.
-
-```sage
-E = EllipticCurve(GF(P), [A,B])
-G = E(Gx,Gy)
-
-for i in range(100):
-     k = random.randrange(1,N)
-     assert(scalar_mult(k, (Gx,Gy)) == (k * G).xy())
-
-for i in range(100):
-     k = -random.randrange(1,N)
-     assert(scalar_mult(k, (Gx,Gy)) == (k * G).xy())
-```
-
-The only difference would be with the case of $k = 0$ since when done
-mathematically the result is $cal(O)$ but since the program uses points with $x$
-and $y$ coordinates it cannot represent this value. The choice of using `None`
-is valid but not that explicit. (Does every `None` represent $cal(O)$ or is it
-an invalid value?)
-
-====== `is_on_curve`
-
-```py
-def is_on_curve(point: tuple[int, int]):
-    """Check if a point is on the Elliptic curve"""
-    if point is None:
-        return True
-    x, y = point
-    # Weistrass curve y^2 = x^3 + ax + b
-    # NOTE: This is mathematically sound
-    return (y * y - (x * x * x + A * x + B)) % P == 0
-```
-
-Given $k = (x,y)$ and $x,y in ZZ$, the function properly applies the Weistrass
-curve.
-
-$
-                y^2 & =x^3+a x+b & space (mod n) \
-  y^2 - (x^3+a x+b) & = 0        & space (mod n)
-$
 
 
 = Errors
@@ -678,39 +530,250 @@ with os.fdopen(pub_fd, "w") as f:
 print("New keypair generated and saved.")
 ```
 
-== Domain issues (We don't know which private key was used to sign)
+== Domain issues
 
-#task[
-  fill, concerns about the system only caring about "now" and no concerns of key
-  rotations
+This issue involves the design of the program and isn't specific to a snippet or
+two of code. This is mainly about what gets signed, how it's structured and
+which keys are used.
+
+```py
+def build_doctor_record() -> bytes:
+    """Build a json array with the following structure
+    [
+        name,
+        avs,
+        { [drug]: dosage }
+    ]
+    """
+    name = input("Patient name: ").strip()
+    avs = input("Patient AVS number: ").strip()
+    drugs = {}
+    print("Enter drugs and dosages. Leave drug name empty to finish.")
+    while True:
+        drug = input("Drug name: ").strip()
+        if not drug:
+            break
+        dosage = input("Dosage (string): ").strip()
+        drugs[drug] = dosage
+    return json.dumps([name, avs, drugs]).encode("utf-8")
+
+
+def build_patient_record() -> bytes:
+    """Build a json array with the following structure
+    [
+        name,
+        avs,
+        { [symptom]: temporality }
+    ]
+    """
+    name = input("Patient name: ").strip()
+    avs = input("Patient AVS number: ").strip()
+    symptoms = {}
+    print("Enter symptoms and their temporality. Leave symptom name empty to finish.")
+    while True:
+        sym = input("Symptom: ").strip()
+        if not sym:
+            break
+        temp = input("Temporality (string): ").strip()
+        symptoms[sym] = temp
+    return json.dumps([name, avs, symptoms]).encode("utf-8")
+```
+
+Both of these functions give us JSON with the following type:
+
+```ts
+type Record = [
+  string,
+  string,
+  {
+    [key: string]: string
+  }
 ]
+```
 
-#task[
-  snippet
-]
+Before saving, the only way to distinguish between the two types of records is
+the flag `isPatient`. Once saved to disk, the distinction is whether it comes
+from `medical_records.txt` or `prescriptions_records.txt`. (The latter isn't
+that big of an issue since it would be the same if we saved to a database using
+different tables.) The issue is that if the pharmacy is given patient record
+with symptoms such as `paracetamol` or `concerta` and the corresponding
+signature they aren't able to tell that it cannot be used as a prescription.
 
-#task[
-  issue
-]
+Furthermore, when looking at what's signed and what's saved, we have another
+issue.
 
-#task[
-  implications
-]
+```py
+def main():
+    #...
+    signature = sign_message(priv, record)
+    save_record_to_db(record, signature, isPatient)
 
-#task[
-  attacker
-]
+def save_record_to_db(record: bytes, signature: Signature, isPatient: bool):
+    """Save a patient record to the database accompanied by its signature"""
+    # WARN: There is no guarantee that given signature is for the given record
+    #   but this shouldn't be an issue when it comes to saving
+    # WARN: The timestamps isn't part of the signature, which means that it
+    #   shouldn't be interpreted as valid because the signature is
+    entry = {
+        "timestamp": datetime.now().isoformat(),
+        "record": record.decode(),
+        "signature": {"r": hex(signature[0]), "s": hex(signature[1])},
+    }
+    # Choose which file to use based on the isPatient flag
+    filename = "medical_records.txt" if isPatient else "prescriptions_records.txt"
+    # WARN: The entry is appended to the file. This will result in an invalid
+    # json structure which will need to be handled correctly when reading from it
+    with open(filename, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+```
 
-#task[
-  what could go wrong
-]
+The attached timestamp isn't part of the signature. This means that changing the
+timestamp wouldn't invalidate a prescription. You could reuse a prescription and
+simply change the date.
 
-#task[
-  simple terms why fix
-]
+Also related to the idea of having a timestamp, we need to rotate the private
+key periodically. This rotation shouldn't invalidate previous signatures but
+currently there is no way to know which public key should be used to validate a
+signature.
 
-#task[
-  fix
+Here's a list of what an attacker could do depending on what they have access
+to:
+- If an attacker can force or accelerate a key rotation, they can invalidate all
+  the previous signatures.
+- If an attacker can create a patient record, get it signed and use it at a
+  pharmacy as if it's a prescription it would pass as valid.
+- If an attacker had a valid prescription in the past and are able to manipulate
+  the timestamp, they can fake a new identical prescription.
+
+
+Without an attacker, the key rotation will still invalidate previous signatures.
+
+Once again, this should be fixed because it's a liability issue if prescriptions
+can be forged using our system or if patients are unable to use their
+prescriptions after a key rotation.
+
+The first fix is to simply include the timestamp and type of record in the
+signature
+
+```py
+T = TypeVar("T")
+
+
+@dataclass(frozen=True)
+class Record(Generic[T]):
+    """Class representing a value that should be serializable and deserializable
+    and include a timestamp that match its creation.
+    """
+
+    data: T
+    timestamp: datetime = datetime.now(timezone.utc)
+    pass
+
+    @property
+    def type(self) -> str:
+        return self.data.__class__.__name__
+
+    def to_dict(self) -> dict:
+        return {
+            "type": self.type,
+            "data": self.data,
+            "timestamp": self.timestamp.isoformat(),
+        }
+
+
+class DoctorData(NamedTuple):
+    name: str
+    avs: str
+    drugs: dict[str, str]
+
+
+class PatientData(NamedTuple):
+    name: str
+    avs: str
+    symptoms: dict[str, str]
+
+
+def build_doctor_record() -> Record[DoctorData]:
+    """Build a doctor record"""
+    name = input("Patient name: ").strip()
+    avs = input("Patient AVS number: ").strip()
+    drugs: dict[str, str] = {}
+    print("Enter drugs and dosages. Leave drug name empty to finish.")
+    while True:
+        drug = input("Drug name: ").strip()
+        if not drug:
+            break
+        dosage = input("Dosage (string): ").strip()
+        drugs[drug] = dosage
+    return Record(data=DoctorData(name, avs, drugs))
+
+def build_patient_record() -> Record[PatientData]:
+    """Build a patient record"""
+    name = input("Patient name: ").strip()
+    avs = input("Patient AVS number: ").strip()
+    symptoms: dict[str, str] = {}
+    print("Enter symptoms and their temporality. Leave symptom name empty to finish.")
+    while True:
+        sym = input("Symptom: ").strip()
+        if not sym:
+            break
+        temp = input("Temporality (string): ").strip()
+        symptoms[sym] = temp
+    return Record(data=PatientData(name, avs, symptoms))
+
+def save_record_to_db(record: Record, priv: PrivKey):
+    """Save a patient record to the database accompanied by its signature"""
+    json_record = json.dumps(record.to_dict())
+    signature = sign_message(priv, json_record.encode("utf-8"))
+    entry = {
+        "record": json_record,
+        "signature": {"r": hex(signature[0]), "s": hex(signature[1])},
+    }
+    filename: str
+    match record.data:
+        case PatientData():
+            filename = "medical_records.txt"
+        case DoctorData():
+            filename = "prescriptions_records.txt"
+        case _:
+            raise ValueError(f"Unexpected record received Record[{record.type}]")
+    # WARN: The entry is appended to the file. This will result in an invalid
+    # json structure which will need to be handled correctly when reading from it
+    with open(filename, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def main():
+    # ...
+    choice = input("Choose 1 or 2: ").strip()
+    if choice == "1":
+        record = build_doctor_record()
+    elif choice == "2":
+        record = build_patient_record()
+        # NOTE: redundant
+    else:
+        print("Invalid choice")
+        return
+    save_record_to_db(record, priv)
+```
+
+This approach fixes the issue of the type of record being lost by including it
+in the type and serialization. The type and timestamps are both included in the
+signature.
+
+#info(title: "Note")[
+  This doesn't address the issue of key rotation but helps. Since the timestamp
+  is included in the signature, we need a versioning system for the public keys
+  and the function that would deserialize the record should check the timestamp,
+  find the closest public key before that timestamp.
+
+  This isn't implemented in the fix because the original program doesn't
+  implement anything past saving to disk and doing so would take more time
+  without being too useful for this lab.
+
+  (The versioning of public keys would also be complex to do right. We probably
+  need a master key to sign the public keys and make sure that those keys are
+  valid when loading the program)
 ]
 
 = Conclusion
@@ -722,3 +785,13 @@ is used correctly.
 
 We would need classes to ensure that public and private keys are valid on
 instantiation as well as clear exceptions to handle errors.
+
+#info(title: "Note")[
+  The `verify_signature` function is never called. This probably isn't an issue
+  since this is supposed to be a library and we don't have a function that reads
+  a record from the disk.
+]
+
+#task(title: "TODO")[
+  Add mentions on AI usage
+]
