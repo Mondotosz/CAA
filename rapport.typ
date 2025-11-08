@@ -4,7 +4,7 @@
 #import "@preview/codly-languages:0.1.8": *
 
 #show: ilm.with(
-  title: [Rapport Labo 2],
+  title: [Report Lab 2],
   author: "Kenan Augsburger",
   date: datetime.today(),
   paper-size: "a4",
