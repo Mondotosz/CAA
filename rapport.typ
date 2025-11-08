@@ -431,8 +431,158 @@ them and raise an exception to be handled otherwise. To make it easier to handle
 down the line, it also makes sense to split `load_or_generate_keys` into two
 distinct functions
 
-#task[
-  fix
+```py
+def compute_public_key(priv: PrivKey) -> PubKey:
+    """Compute the public key of a private key"""
+    pub = scalar_mult(priv, (Gx, Gy))
+    assert pub is not None
+    return pub
+
+
+def is_valid_private_key(key: PrivKey) -> bool:
+    """Check if a private key is valid with the curve"""
+    return 1 <= key < N
+
+
+def is_valid_public_key(pub: PubKey, priv: PrivKey | None) -> bool:
+    """Check if a public key is valid
+    If None is specified for the private key, this function only checks if the
+    key is on the curve
+    """
+    return is_on_curve(pub) if priv is None else pub == compute_public_key(priv)
+
+
+class InvalidPrivateKeyError(Exception):
+    pass
+
+
+class InvalidPublicKeyError(Exception):
+    pass
+
+
+def load_priv_key(path: str) -> PrivKey:
+    """Load a private key from disk and check its validity
+    Raises:
+        FileNotFoundError: If the path doesn't lead to an existing file
+        InvalidPrivateKeyError: If the key is invalid
+    """
+    if not os.path.exists(path):
+        raise FileNotFoundError()
+    with open(path, "r") as f:
+        priv = int(f.read().strip(), 16)
+        if not is_valid_private_key(priv):
+            raise InvalidPrivateKeyError()
+        return priv
+
+
+def load_pub_key(path: str, priv_key: PrivKey | None) -> PubKey:
+    """Load a public key from the disk and check its validity.
+    Raises:
+        FileNotFoundError: If the path doesn't lead to an existing file
+        InvalidPublicKeyError: If the public key isn't the public key of the
+            provided private key. If None is given for the private key, The only
+            check is whether the public key is a point on the curve.
+    """
+    if not os.path.exists(path):
+        raise FileNotFoundError()
+    with open(path, "r") as f:
+        # The public key is read as a JSON object with the keys x and y
+        # containing integers in base64
+        pub_data = json.load(f)
+        pub = (int(pub_data["x"], 16), int(pub_data["y"], 16))
+        if not is_valid_public_key(pub, priv_key):
+            raise InvalidPublicKeyError()
+        return pub
+
+
+def generate_and_save_keys(priv_path: str, pub_path: str) -> tuple[PrivKey, PubKey]:
+    if os.path.exists(priv_path):
+        # NOTE: only keeping one backup since I don't want to bother with numbering
+        os.replace(priv_path, priv_path + ".bak")
+        print(
+            f"existing private key found during generation of keys, backing up to {priv_path}.bak"
+        )
+
+    if os.path.exists(pub_path):
+        # NOTE: only keeping one backup since I don't want to bother with numbering
+        os.replace(pub_path, pub_path + ".bak")
+        print(
+            f"existing public key found during generation of keys, backing up to {pub_path}.bak"
+        )
+
+    priv, pub = generate_keypair()
+    # WARN: The public and private keys are both simply saved to disk
+    #   without any specifications when it comes to permissions. (on linux,
+    #   resulted in 644 permissions)
+    with open(priv_path, "w") as f:
+        # The private key is simply written properly in hex format
+        f.write(hex(priv))
+    with open(pub_path, "w") as f:
+        # The public key is saved correctly in JSON
+        json.dump({"x": hex(pub[0]), "y": hex(pub[1])}, f)
+    print("New keypair generated and saved.")
+    return (priv, pub)
+
+
+def generate_and_save_public_key(priv: PrivKey, pub_path: str) -> PubKey:
+    if os.path.exists(pub_path):
+        # NOTE: only keeping one backup since I don't want to bother with numbering
+        os.replace(pub_path, pub_path + ".bak")
+        print(
+            f"existing public key found during generation of keys, backing up to {pub_path}.bak"
+        )
+
+    pub = compute_public_key(priv)
+    with open(pub_path, "w") as f:
+        # The public key is saved correctly in JSON
+        json.dump({"x": hex(pub[0]), "y": hex(pub[1])}, f)
+    return pub
+
+
+def load_or_generate_keys() -> tuple[PrivKey, PubKey]:
+    """This function loads an existing pair of private/public keys or generates,
+    saves and return a new pair.
+    """
+
+    # Files containing the private and public keys
+    priv_file = "ecdsa_private.key"
+    pub_file = "ecdsa_public.key"
+
+    try:
+        priv = load_priv_key(priv_file)
+    except (InvalidPrivateKeyError, FileNotFoundError) as err:
+        print(
+            "Your private key is invalid."
+            if isinstance(err, InvalidPrivateKeyError)
+            else "Missing private key"
+        )
+        choice = input(
+            "Would you like to generate a new pair of keys? Existing keys will be backed up to [key].bak y/N: "
+        )
+        if not choice == "y":
+            raise err
+        return generate_and_save_keys(priv_file, pub_file)
+
+    try:
+        pub = load_pub_key(pub_file, priv)
+    except (InvalidPublicKeyError, FileNotFoundError) as err:
+        print(
+            "Your public key is invalid."
+            if isinstance(err, InvalidPublicKeyError)
+            else "Missing public key"
+        )
+        choice = input("Would you like to generate the public key? y/N: ")
+        if not choice == "y":
+            raise err
+        return (priv, generate_and_save_public_key(priv, pub_file))
+
+    return (priv, pub)
+```
+
+#info(title: "Note")[
+  This rewrite of the `load_or_generate_keys` is a bit messy but it handles the
+  issue of loading invalid keys as well as the issue of irreversibly losing keys
+  without warning. (Described in more details in the next section)
 ]
 
 === Destructive storage of private key
@@ -465,9 +615,7 @@ records.
 The simple fix to this issue is to prompt the user and ask whether they want to
 overwrite the private key or compute the public key and save it.
 
-#task[
-  fix
-]
+This is implemented in the fix of the previous section.
 
 === Insecure permission management of private key
 
