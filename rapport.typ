@@ -657,9 +657,26 @@ This issue should be fixed because it could cause serious legal troubles since
 it involves medical prescriptions. Furthermore, it also risks the loss of trust
 in the system.
 
-#task[
-  fix
-]
+```py
+priv, pub = generate_keypair()
+(priv_mask, pub_mask) = (0o600, 0o644)
+flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+
+# Get open the file through the os api to enforce permissions on the files
+priv_fd = os.open(priv_path, flags, priv_mask)
+os.fchmod(priv_fd, priv_mask)
+
+with os.fdopen(priv_fd, "w") as f:
+    # The private key is simply written properly in hex format
+    f.write(hex(priv))
+
+pub_fd = os.open(pub_path, flags, pub_mask)
+os.fchmod(pub_fd, pub_mask)
+with os.fdopen(pub_fd, "w") as f:
+    # The public key is saved correctly in JSON
+    json.dump({"x": hex(pub[0]), "y": hex(pub[1])}, f)
+print("New keypair generated and saved.")
+```
 
 == Domain issues (We don't know which private key was used to sign)
 
