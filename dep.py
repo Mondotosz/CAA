@@ -242,7 +242,7 @@ def save_record_to_db(record: bytes, signature: Signature, isPatient: bool):
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-# INFO: Valid
+# INFO: Risky
 def load_or_generate_keys() -> tuple[PrivKey, PubKey]:
     """This function loads an existing pair of private/public keys or generates,
     saves and return a new pair.

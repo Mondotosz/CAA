@@ -399,21 +399,37 @@ it. The problem is that to be able to properly sign and verify the signature of
 a message you need the private key $a$ to respect $1 <= a < N$ and the public
 key $A$ should be $A = a G$.
 
-#task[
-  implications
-]
+If $a = 0$, the corresponding public key $A = cal(O)$ which would be unusable
+and raise an exception whenever accessing either the $x$ or $y$ components of
+the point.
 
-#task[
-  attacker
-]
+If $a = N$, then $A = cal(O)$ since $N$ is the order of the group. Same
+consequences.
 
-#task[
-  what could go wrong
-]
+Any other value of $a$ will be treated as $a mod N$ so as long as $a mod N != 0$
+the key should be valid but there shouldn't be any reason why we should have
+longer keys since it won't provide any benefits.
 
-#task[
-  simple terms why fix
-]
+If $A != a G$, the signature verification won't work.
+
+If $A$ isn't on the curve, the program will stop after an assertion in
+`scalar_mult`.
+
+If an attacker can modify the keys then you've got bigger problems than the
+program crashing from invalid keys.
+
+One way this could go wrong is if there is a partial recovery, or maybe one of
+the keys was missing and the remaining key wasn't writable during the creation
+of a new pair. In those instances, the pair wouldn't match and lead to the
+program crashing.
+
+This should be fixed because an invalid pair of keys will make the program
+unusable.
+
+The simple fix would be to check that the keys are valid right after loading
+them and raise an exception to be handled otherwise. To make it easier to handle
+down the line, it also makes sense to split `load_or_generate_keys` into two
+distinct functions
 
 #task[
   fix
@@ -440,17 +456,14 @@ new pair of keys. We will need to distribute our new public key to anyone who
 needs to verify our signatures and if we can't our old public key anywhere, the
 validity of past records becomes unverifiable.
 
-#task[
-  attacker
-]
+This most likely isn't an attack vector. If an attacker manages to delete the
+public key on the server they probably already compromised the server.
 
-#task[
-  what could go wrong
-]
+This should be fixed because it's a threat to the trust of previously signed
+records.
 
-#task[
-  simple terms why fix
-]
+The simple fix to this issue is to prompt the user and ask whether they want to
+overwrite the private key or compute the public key and save it.
 
 #task[
   fix
@@ -499,3 +512,48 @@ in the system.
 #task[
   fix
 ]
+
+== Domain issues (We don't know which private key was used to sign)
+
+#task[
+  fill, concerns about the system only caring about "now" and no concerns of key
+  rotations
+]
+
+#task[
+  snippet
+]
+
+#task[
+  issue
+]
+
+#task[
+  implications
+]
+
+#task[
+  attacker
+]
+
+#task[
+  what could go wrong
+]
+
+#task[
+  simple terms why fix
+]
+
+#task[
+  fix
+]
+
+= Conclusion
+
+Other than cryptographic issues, there are also a lot of problems with the
+structure of the code. If the goal is to provide a library to use within another
+program, it should be clearly structured in modules and ensure that the library
+is used correctly.
+
+We would need classes to ensure that public and private keys are valid on
+instantiation as well as clear exceptions to handle errors.
