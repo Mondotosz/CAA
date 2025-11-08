@@ -1,9 +1,6 @@
 from collections.abc import Buffer
 import json
 
-# WARN: the secrets module should be used instead
-#   https://docs.python.org/3/library/random.html
-import random
 import secrets
 
 # NOTE: https://docs.python.org/3/library/hashlib.html
