@@ -937,6 +937,91 @@ signature.
   valid when loading the program)
 ]
 
+#warning(title: "Warning")[
+  Looking back, the fix introduces another issue related to the timestamp. The
+  timestamp is set when the Record is instanciated and not when it's signed.
+  Rather than having a `Record` class to serialize then sign, the `Record` class
+  shouldn't have the timestamp but instead provide a `sign` method to produce a
+  read only `SignedRecord` which would add a timestamp, serialize and sign on
+  instantiation.
+]
+
+== Side channel attack
+
+#info(title: "Note")[
+  This issue was mentioned by Mario.
+]
+
+The following snippet is mathematically correct and implements the double and
+add#footnote[https://en.wikipedia.org/wiki/Elliptic_curve_point_multiplication#Double-and-add]
+algorithm for elliptic curve point multiplication.
+
+```py
+# INFO: mathematically sound, None means point to infinity
+def scalar_mult(k: int, point: Point | None) -> Point | None:
+    """Multiply a point on the curve by the scalar value k"""
+    # Check that the point is on the curve otherwise the multiplication isn't
+    # possible.
+    assert is_on_curve(point)
+    if k % N == 0 or point is None:
+        # If k is perfectly divisible by N or now point was given, the result is None.
+        # NOTE: If k is perfectly divisible by N, the result will be a None,
+        # this check saves time
+        return None
+    if k < 0:
+        # If k is negative, we simply multiply both inputs by -1 which is
+        # simple to do and allows the next part of the algorithm to work.
+        return scalar_mult(-k, (point[0], (-point[1]) % P))
+    result = None
+    addend = point
+    # To calculate the result, we add point k times, effectively multiplying
+    # the point by k
+    while k:
+        if k & 1:
+            result = point_add(result, addend)
+        addend = point_add(addend, addend)
+        k >>= 1
+    return result
+```
+
+It was mentioned multiple times during class that this algorithm is vulnerable
+to timing attacks. The compute time scales with the number for bits set to $1$
+which allows an attacker to guess the scalar value more efficiently.
+
+This means that the following functions are vulnerable to timing attacks since
+they use double and add.
+- `generate_keypair`: if the attacker gets info on the private key and know the
+  public key, they can find the private key (probably still leaves a lot of
+  bruteforce but at a smaller scale).
+- `sign_message`: if the attacker manages to find k, they can compute the
+  private key.
+- `verify_signature`: this one shouldn't be an issue since it doesn't involve
+  the private key.
+
+The reason why we should fix this is the same as every other issue which leaks
+the private key. This would allow an attacker to forge signatures and thus break
+authenticity and integrity.
+
+To fix this, we need an algorithm that's resistant to side channel
+attacks#footnote[https://eitca.org/cybersecurity/eitc-is-acc-advanced-classical-cryptography/elliptic-curve-cryptography/elliptic-curve-cryptography-ecc/examination-review-elliptic-curve-cryptography-ecc/how-does-the-double-and-add-algorithm-optimize-the-computation-of-scalar-multiplication-on-an-elliptic-curve/].
+The main recommandation when looking online is to use the Montgomery ladder.
+
+When looking online#footnote[https://safecurves.cr.yp.to/ladder.html], the
+`secp256k1` curve doesn't support Montgomery ladder. We would need to change the
+curve in order to use it.
+
+One fix would be to use a curve that supports the Montgomery ladder and use the
+Montgomery curve form since the algorithm is optimized for those curves. We
+could use EC25519#footnote[https://en.wikipedia.org/wiki/Curve25519] since it's
+widely used and is a Montgomery curve.
+
+We would then need to update the `point_add` function to work with the new curve
+and implement the Montgomery ladder for `scalar_mult`.
+
+#info(title: "Note")[
+  Since this fix seems to take quite a bit of time, I'm skipping it for now.
+]
+
 = Conclusion
 
 Other than cryptographic issues, there are also a lot of problems with the
