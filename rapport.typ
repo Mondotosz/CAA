@@ -12,7 +12,7 @@
 )
 
 #set page(numbering: "1")
-#set text(lang: "fr")
+#set text(lang: "en")
 
 #codly(
   languages: (
@@ -65,7 +65,37 @@ those parameters are correct.
 
 This section covers each errors that were found.
 
-== `random.randrange`
+#info(title: "Note")[
+  I forgot the part where the errors had to be sorted by criticality while
+  writing this report.
+
+  So here's the order of the vulnerabilities:
+  1. The usage of the `random` module instead of `secrets` (@random) since the
+    key can be recovered.
+  2. The side channel attack on `scalar_mult` (@side_channel) since it also
+    leads to the key being recoverable but seems harder to pull off.
+  3. The insecure permission management of the private key
+    (@insecure_permissions) since it once again leads to the private key
+    leaking. In third place since this one requires the attacker to read files
+    on the host. (Either any user access or with another service running on the
+    host which allows path traversal or things like that.)
+  4. The domain issues (@domain), the key isn't leaked but it's easy to get a
+    signed record that's indistinguishable from a prescription.
+  5. The improper signature verification (@improper_signature) since it could be
+    used to forge signatures but the requirements for this to be exploitable
+    relies on the fact that whoever tries to validate a signature uses $cal(O)$
+    as the public key
+  6. The bad range in `sign_message` (@bad_range) since it will raise an
+    exception. (Denial of service)
+  7. Destructive storage of private key (@destructive_storage). Unlikely but if
+    the public key isn't stored anywhere else (must be a trustworthy storage),
+    anything signed with the original key becomes invalid.
+  8. Blind loading (@blind_loading). Also unlikely, leads to undefined behavior.
+    (Mostly problematic when paired with the improper signature verification,
+    but also if the private key isn't in $[1;N[$)
+]
+
+== `random.randrange` <randrange>
 
 This function is used twice in the code.
 
@@ -124,7 +154,7 @@ there is a $1/N$ chance of having an issue when trying to sign a message.
 
 We have two problems here.
 
-=== Bad range ${0,...,N-1}$
+=== Bad range ${0,...,N-1}$ <bad_range>
 
 The problem here is that there is a chance of raising an exception and the
 implications vary depending on how exceptions are handled by the caller as well
@@ -188,7 +218,7 @@ def generate_keypair() -> tuple[int, Point]:
     return priv, pub
 ```
 
-=== Usage of `random`
+=== Usage of `random` <random>
 
 #codly(
   highlights: (
@@ -263,7 +293,7 @@ def sign_message(priv: PrivKey, message: Buffer) -> Signature:
         # ...
 ```
 
-== Improper signature verification
+== Improper signature verification <improper_signature>
 
 #info(title: "Note")[
   The `verify_signature` function is never called. This probably isn't an issue
@@ -384,9 +414,9 @@ def verify_signature(pub: PubKey, message: Buffer, signature: Signature) -> bool
   private key is a multiple of $N$ or equal to $0$.
 ]
 
-== `load_or_generate_keys`
+== `load_or_generate_keys` <load_or_generate_keys>
 
-=== Blind loading
+=== Blind loading <blind_loading>
 
 ```py
 if os.path.exists(priv_file) and os.path.exists(pub_file):
@@ -598,7 +628,7 @@ def load_or_generate_keys() -> tuple[PrivKey, PubKey]:
   without warning. (Described in more details in the next section)
 ]
 
-=== Destructive storage of private key
+=== Destructive storage of private key <destructive_storage>
 
 ```py
 else:
@@ -630,7 +660,7 @@ overwrite the private key or compute the public key and save it.
 
 This is implemented in the fix of the previous section.
 
-=== Insecure permission management of private key
+=== Insecure permission management of private key <insecure_permissions>
 
 ```py
 else:
@@ -691,7 +721,7 @@ with os.fdopen(pub_fd, "w") as f:
 print("New keypair generated and saved.")
 ```
 
-== Domain issues
+== Domain issues <domain>
 
 This issue involves the design of the program and isn't specific to a snippet or
 two of code. This is mainly about what gets signed, how it's structured and
@@ -946,7 +976,7 @@ signature.
   instantiation.
 ]
 
-== Side channel attack
+== Side channel attack <side_channel>
 
 #info(title: "Note")[
   This issue was mentioned by Mario.
